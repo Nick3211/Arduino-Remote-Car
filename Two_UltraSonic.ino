@@ -1,7 +1,9 @@
 #include <IRremote.h>
 
-int IR_RECEIVE_PIN = 11;
-IRrecv IrReceiver(IR_RECEIVE_PIN);
+int RECV_PIN = 11;
+IRrecv irrecv(RECV_PIN);
+decode_results results;
+
 
 #define echoPinBack 5
 
@@ -20,6 +22,7 @@ IRrecv IrReceiver(IR_RECEIVE_PIN);
 #define motorLeftBack 4
 
 #if defined(ARDUINO_ARCH_SAMD)
+
 #define Serial SerialUSB
 #endif
 
@@ -62,6 +65,7 @@ void setup() {
   pinMode(motorRightBack, OUTPUT);
   pinMode(motorLeftBack, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
+  irrecv.enableIRIn();
   RemoteSetup();
 }
 
@@ -74,23 +78,22 @@ void RemoteSetup() {
 
     // In case the interrupt driver crashes on setup, give a clue
     // to the user what's going on.
-    Serial.println("Enabling IRin");
-    IrReceiver.enableIRIn();  // Start the receiver
+    //Serial.println("Enabling IRin");
+    //IrReceiver.enableIRIn();  // Start the receiver
     //IrReceiver.blink13(true); // Enable feedback LED
 
-    Serial.print(F("Ready to receive IR signals at pin "));
-    Serial.println(IR_RECEIVE_PIN);
+    //Serial.print(F("Ready to receive IR signals at pin "));
+   // Serial.println(IR_RECEIVE_PIN);
 }
-/*void RemoteControl() {
-  if (IrReceiver.decode()) {
-        IrReceiver.printResultShort(&Serial);
-        readRemoteCode = &Serial;
-        Serial.println();
 
-        IrReceiver.resume();
-    }
-    delay(100);
-}*/
+long RemoteControl() {
+  if (irrecv.decode(&results)) {
+    Serial.println(results.value, HEX);
+    irrecv.resume();
+  }
+  delay(100);
+  return results.value;
+}
 
 void StopFrontMotors() {
   digitalWrite(motorRightFront, LOW);
@@ -151,18 +154,23 @@ void BackDistanceSensor() {
 }
 
 void loop() {
-   if (IrReceiver.decode()) {
-       IrReceiver.printResultShort(&Serial);
-       IrReceiver.printResultShort(&readRemoteCode);
-       readRemoteCode.println();
-
-       IrReceiver.resume();
+   switch (RemoteControl()) {
+    case Go:
+      GoFrontMotors();
+      StopBackMotors();
+      break;
+    case Back:
+      StopFrontMotors();
+      GoBackMotors();
+      break;
+    case PowerOn:
+      GoFrontMotors();
+      break;
+    case PowerOff:
+      StopFrontMotors();
+      StopBackMotors();
+      break;
    }
-    delay(100);
-  Serial.println("remoteCode: ");
-  Serial.println(readRemoteCode);
-  Serial.println("PowerOn: ");
-  Serial.println(PowerOn);
   /*if (readRemoteCode == PowerOn) {
     remoteCode = PowerOn;
     GoFrontMotors();
@@ -192,6 +200,4 @@ void loop() {
   FrontDistanceSensor();
   BackDistanceSensor();
   delay(100);*/
-  //GoFrontMotors();
-  //GoBackMotors();
 }
