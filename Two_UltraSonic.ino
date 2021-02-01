@@ -1,25 +1,20 @@
 #include <IRremote.h>
 
-int RECV_PIN = 11;
+int Echo = A1;
+int Trig = A0;
+
+int RECV_PIN = 2;
 IRrecv irrecv(RECV_PIN);
 decode_results results;
 
+#define LeftMotorGo 7
+#define LeftMotorBack 6
 
-#define echoPinBack 5
+#define RightMotorGo 9
+#define RightMotorBack 8
 
-#define trigPinBack 6
-
-#define echoPinFront 9
-
-#define trigPinFront 10
-
-#define motorLeftFront 7
-
-#define motorRightFront 8
-
-#define motorRightBack 3
-
-#define motorLeftBack 4
+#define Right_motor_en 10
+#define Left_motor_en 5
 
 #if defined(ARDUINO_ARCH_SAMD)
 
@@ -27,63 +22,43 @@ decode_results results;
 #endif
 
 long duration;
+int distance = 0;
 
-int distanceBack = 0;
+int spin_speed = 50;
+int turn_speed = 150;
 
-int distanceFront = 0;
+long LastClick = 0;
+long LastHoldDown = 0;
 
-enum Direction {
-  front,
-  back
-};
+int count = 0;
 
 enum RemoteCode {
   Go = 0xFF30CF, //1
   Back = 0xFF18E7, //2
-  LeftFront = 0xFF7A85, //3
+  TurnLeft = 0xFF7A85, //3
   RightFront = 0xFF10EF, //4
   LeftBack = 0xFF38C7, //5
   RightBack = 0xFF5AA5, //6
   PowerOn = 0xFFA25D, //power button
-  PowerOff = 0xFF629D //Vol+
+  PowerOff = 0xFF629D, //Vol+
+  HoldDown = 0xFFFFFFFF 
 };
-
-Direction Cdirection = front;
 
 RemoteCode remoteCode = PowerOff;
 int readRemoteCode = 0;
 
 void setup() {
-  pinMode(trigPinFront, OUTPUT);
-  pinMode(echoPinFront, INPUT);
-  pinMode(trigPinBack, OUTPUT);
-  pinMode(echoPinBack, INPUT);
-  Serial.begin(115200);
-  Serial.println("Ultrasonic Sensor HC-SR04 Test");
-  pinMode(motorRightFront, OUTPUT);
-  pinMode(motorLeftFront, OUTPUT);
-  pinMode(motorRightBack, OUTPUT);
-  pinMode(motorLeftBack, OUTPUT);
+  pinMode(Trig, OUTPUT);
+  pinMode(Echo, INPUT);
+  pinMode(LeftMotorGo, OUTPUT);
+  pinMode(LeftMotorBack, OUTPUT);
+  pinMode(RightMotorGo, OUTPUT);
+  pinMode(RightMotorBack, OUTPUT);
+  pinMode(Right_motor_en, OUTPUT);
+  pinMode(Left_motor_en, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
   irrecv.enableIRIn();
-  RemoteSetup();
-}
-
-void RemoteSetup() {
-    #if defined(__AVR_ATmega32U4__) || defined(SERIAL_USB) || defined(SERIAL_PORT_USBVIRTUAL)
-    delay(2000); // To be able to connect Serial monitor after reset and before first printout
-    #endif
-    // Just to know which program is running on my Arduino
-    Serial.println(F("START " __FILE__ " from " __DATE__));
-
-    // In case the interrupt driver crashes on setup, give a clue
-    // to the user what's going on.
-    //Serial.println("Enabling IRin");
-    //IrReceiver.enableIRIn();  // Start the receiver
-    //IrReceiver.blink13(true); // Enable feedback LED
-
-    //Serial.print(F("Ready to receive IR signals at pin "));
-   // Serial.println(IR_RECEIVE_PIN);
+  Serial.begin(115200);
 }
 
 long RemoteControl() {
@@ -95,109 +70,137 @@ long RemoteControl() {
   return results.value;
 }
 
-void StopFrontMotors() {
-  digitalWrite(motorRightFront, LOW);
-  digitalWrite(motorLeftFront, LOW);
-}
-
-void GoFrontMotors() {
-  digitalWrite(motorRightFront, LOW);
+void DistanceSensor() {
+  digitalWrite(Trig, LOW);
   delayMicroseconds(2);
-  digitalWrite(motorRightFront, 150);
-  delayMicroseconds(10000);
-  digitalWrite(motorLeftFront, LOW);
-  delayMicroseconds(2);
-  digitalWrite(motorLeftFront, 150);
-  delayMicroseconds(10000);
-}
-
-void StopBackMotors() {
-  digitalWrite(motorRightBack, LOW);
-  digitalWrite(motorLeftBack, LOW);
-}
-
-void GoBackMotors() {
-  digitalWrite(motorRightBack, LOW);
-  delayMicroseconds(2);
-  digitalWrite(motorRightBack, 150);
-  delayMicroseconds(10000);
-  digitalWrite(motorLeftBack, LOW);
-  delayMicroseconds(2);
-  digitalWrite(motorLeftBack, 150);
-  delayMicroseconds(10000);
-}
-
-void FrontDistanceSensor() {
-  digitalWrite(trigPinFront, LOW);
-  delayMicroseconds(2);
-  digitalWrite(trigPinFront, HIGH);
+  digitalWrite(Trig, HIGH);
   delayMicroseconds(10);
-  digitalWrite(trigPinFront, LOW);
-  duration = pulseIn(echoPinFront, HIGH);
-  distanceFront = duration * 0.034 / 2;
-  //Serial.print("DistanceFront: ");
-  //Serial.print(distanceFront);
-  //Serial.println(" cm");
+  digitalWrite(Trig, LOW);
+  duration = pulseIn(Echo, HIGH);
+  distance = duration * 0.034 / 2;
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
 }
 
-void BackDistanceSensor() {
-  digitalWrite(trigPinBack, LOW);
-  delayMicroseconds(2);
-  digitalWrite(trigPinBack, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPinBack, LOW);
-  duration = pulseIn(echoPinBack, HIGH);
-  distanceBack = duration * 0.034 / 2;
-  //Serial.print("DistanceBack: ");
-  //Serial.print(distanceBack);
-  //Serial.println(" cm");
+void GoBack() {
+  digitalWrite(Left_motor_en, HIGH);
+  analogWrite(Left_motor_en, 255);
+  digitalWrite(Right_motor_en, HIGH);
+  analogWrite(Right_motor_en, 255);
+  digitalWrite(LeftMotorGo, LOW);
+  analogWrite(LeftMotorGo, 0);
+  digitalWrite(LeftMotorBack, HIGH);
+  analogWrite(LeftMotorBack, 255);
+  digitalWrite(RightMotorGo, LOW);
+  analogWrite(RightMotorGo, 0);
+  digitalWrite(RightMotorBack, HIGH);
+  analogWrite(RightMotorBack, 255);
+}
+
+void GoForwards() {
+  digitalWrite(Left_motor_en, HIGH);
+  analogWrite(Left_motor_en, 255);
+  digitalWrite(Right_motor_en, HIGH);
+  analogWrite(Right_motor_en, 255);
+  digitalWrite(LeftMotorGo, HIGH);
+  analogWrite(LeftMotorGo, 255);
+  digitalWrite(LeftMotorBack, LOW);
+  analogWrite(LeftMotorBack, 0);
+  digitalWrite(RightMotorGo, HIGH);
+  analogWrite(RightMotorGo, 255);
+  digitalWrite(RightMotorBack, LOW);
+  analogWrite(RightMotorBack, 0);
+}
+
+void turnLeft(int spin_speed, int turn_speed) {
+  digitalWrite(Left_motor_en, HIGH);
+  analogWrite(Left_motor_en, 255);
+  digitalWrite(Right_motor_en, HIGH);
+  analogWrite(Right_motor_en, 255);
+  digitalWrite(RightMotorGo, HIGH);
+  analogWrite(RightMotorGo, turn_speed);
+  digitalWrite(LeftMotorGo, HIGH);
+  analogWrite(LeftMotorGo, spin_speed);
+  digitalWrite(RightMotorBack, LOW);
+  analogWrite(RightMotorBack, 0);
+  digitalWrite(LeftMotorBack, LOW);
+  analogWrite(LeftMotorBack, 0);
+}
+
+void StopForward() {
+  digitalWrite(Left_motor_en, HIGH);
+  analogWrite(Left_motor_en, 255);
+  digitalWrite(Right_motor_en, HIGH);
+  analogWrite(Left_motor_en, 255);
+  digitalWrite(LeftMotorGo, LOW);
+  analogWrite(LeftMotorGo, 0);
+  digitalWrite(RightMotorGo, LOW);
+  analogWrite(RightMotorGo, 0);
+}
+
+void StopAll() {
+  digitalWrite(Left_motor_en, HIGH);
+  analogWrite(Left_motor_en, 255);
+  digitalWrite(Right_motor_en, HIGH);
+  analogWrite(Left_motor_en, 255);
+  digitalWrite(LeftMotorGo, LOW);
+  analogWrite(LeftMotorGo, 0);
+  digitalWrite(LeftMotorBack, LOW);
+  analogWrite(LeftMotorBack, 0);
+  digitalWrite(RightMotorGo, LOW);
+  analogWrite(RightMotorGo, 0);
+  digitalWrite(RightMotorBack, LOW);
+  analogWrite(RightMotorBack, 0);
 }
 
 void loop() {
+  LastHoldDown = 0;
    switch (RemoteControl()) {
     case Go:
-      GoFrontMotors();
-      StopBackMotors();
+      LastClick = Go;
+      GoForwards();
       break;
     case Back:
-      StopFrontMotors();
-      GoBackMotors();
+      LastClick = Back;
+      GoBack();
       break;
     case PowerOn:
-      GoFrontMotors();
+      LastClick = PowerOn;
+      GoForwards();
       break;
     case PowerOff:
-      StopFrontMotors();
-      StopBackMotors();
+      LastClick = PowerOff;
+      StopAll();
+      break;
+    case HoldDown:
+      count = 0;
+      Serial.println("HoldDown");
+      Serial.println(count);
+      LastHoldDown = HoldDown;
+      if (LastClick = Go) {
+        GoForwards();
+      }
+      else if (LastClick == Back) {
+        GoBack();
+      }
+      else if (LastClick == PowerOn) {
+        GoForwards();
+      }
+      else if (LastClick == PowerOff) {
+        StopAll();
+      }
       break;
    }
-  /*if (readRemoteCode == PowerOn) {
-    remoteCode = PowerOn;
-    GoFrontMotors();
-    Serial.println(remoteCode);
-  }*/
-  /*if (remoteCode == PowerOff) {
-    StopFrontMotors();
-    StopBackMotors();
-    Serial.println("yes");
-  }*/
-  /*if (distanceBack <= 10) {
-    GoFrontMotors();
-    StopBackMotors();
-  }
-  else if (distanceFront <= 10) {
-    StopFrontMotors();
-    GoBackMotors();
-  }
-  if ((Cdirection == front)&&(distanceFront > 10)) {
-    GoFrontMotors();
-    StopBackMotors();
-  }
-  if ((Cdirection == back)&&(distanceBack > 10)) {
-    StopFrontMotors();
-    GoBackMotors();
-  }
-  FrontDistanceSensor();
-  BackDistanceSensor();
-  delay(100);*/
+   if (LastHoldDown == 0 && (LastClick != PowerOn || LastClick != PowerOff || LastClick != Go || LastClick != Back)) {
+    StopAll();
+    count++;
+    Serial.println(count);
+   }
+   
+   if (distance <= 40) {
+      StopForward();
+   }
+   DistanceSensor();
+  //turnLeft(spin_speed, turn_speed);
 }
